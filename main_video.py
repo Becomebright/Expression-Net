@@ -193,8 +193,8 @@ def face_reconstruction():
         coeffs['FRAME'] = []
         for i in range(6):
             coeffs['POSE' + str(i)] = []
-        for i in range(29):
-            coeffs['EXP' + str(i)] = []
+        for i in range(62):
+            coeffs[str(i) + '_EXP'] = []
 
         while True:
             start = time.time()
@@ -205,7 +205,7 @@ def face_reconstruction():
 
             frame = imutils.resize(frame, width=400)
             faceOrNot, image = runFaceDetect(frame, net)
-            cv2.imshow("Frame", frame)
+            # cv2.imshow("Frame", frame)
 
             if faceOrNot == -1:
                 print('no faces detected')
@@ -215,7 +215,7 @@ def face_reconstruction():
             idx += 1
             if idx % count is not 0: # process every `count` frames
                 continue
-                
+
             # Fix the grey image
             if len(image.shape) < 3:
                 image_r = np.reshape(image, (image.shape[0], image.shape[1], 1))
@@ -231,14 +231,16 @@ def face_reconstruction():
             # Shape = Shape_Texture[0:99]
             # Shape = np.reshape(Shape, [-1])
             Expr = np.reshape(Expr, [-1])
+            np.save('Expr', Expr)
             SEP, _ = utils.projectBackBFM_withEP(model, Shape_Texture, Expr, Pose)
 
             # Save the pose & expression coefficients
             coeffs['FRAME'].append(idx)
             for i in range(6):
                 coeffs['POSE' + str(i)].append(Pose[i])
-            for i in range(29):
-                coeffs['EXP' + str(i)].append(Expr[i])
+            convert_expr_coeffs(coeffs, Expr)
+            # for i in range(29):
+                # coeffs['EXP' + str(i)].append(Expr[i])
 
             # Write the mesh
             mesh_name = mesh_folder + '/' + str(idx)
@@ -257,6 +259,16 @@ def face_reconstruction():
         # Write coeffs to csv file
         df = pd.DataFrame(coeffs)
         df.to_csv(coeff_csv, sep=',', encoding='utf-8', index=False)
+
+# Convert 3DMM expression coefficients to blendshape coefficients
+def convert_expr_coeffs(coeffs_dict, expr):
+    # B = C * E
+    C = np.load('convert_matrix.npy')
+    E = np.reshape(expr, (1, -1))
+    B = C.dot(E)
+    B.reshape((1, -1))
+    for i, b in enumerate(B):
+        coeffs_dict[str(i) + 'EXP'].append(b)
 
 
 def write_meshes(frames, SEPs, faces):
