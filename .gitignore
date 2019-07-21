@@ -135,4 +135,9 @@ output_preproc.csv
 exp_basis.rar
 exp_basis_3.rar
 test.py
-/video
+coeff.csv
+coeff2.csv
+*.rar
+output_ply2/
+specific_exp/
+video/

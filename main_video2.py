@@ -1,3 +1,5 @@
+# Only write expression mesh, do not change shape or pose
+
 import sys
 import imutils
 import numpy as np
@@ -32,10 +34,10 @@ _tmpdir = './tmp/'  # save intermediate images needed to fed into ExpNet, ShapeN
 print('> make dir')
 if not os.path.exists(_tmpdir):
     os.makedirs(_tmpdir)
-coeff_csv = "coeff.csv"  # The csv file that saves pose & expression coefficients
+coeff_csv = "coeff2.csv"  # The csv file that saves pose & expression coefficients
 factor = 0.25  # expand the given face bounding box to fit in the DCCNs
 _alexNetSize = 227
-mesh_folder = './output_ply'  # The location where .ply files are saved
+mesh_folder = './output_ply2'  # The location where .ply files are saved
 
 # Get training image/labels mean/std for pose CNN
 file = np.load("./fpn_new_model/perturb_Oxford_train_imgs_mean.npz")
@@ -154,8 +156,7 @@ def face_reconstruction():
     with tf.compat.v1.Session(config=tf.compat.v1.ConfigProto(allow_soft_placement=True)) as sess:
         start = time.time()
         sess.run(init_op)
-        print('init sess {}'.format(time.time() - start))
-        start = time.time()
+
         # Load face pose net model from Chang et al.'ICCVW17
         load_path = "./fpn_new_model/model_0_1.0_1.0_1e-07_1_16000.ckpt"
         saver_pose.restore(sess, load_path)
@@ -186,11 +187,12 @@ def face_reconstruction():
         # initialize the video stream and allow the camera sensor to warm up
 
         # Read video file
-        video_full_path = "video/Input2.mp4"
+        video_full_path = "video/Input.mp4"
         count = 5  # save image every `count` frames
         cap = cv2.VideoCapture(video_full_path)
         idx = -1
-        coeffs = {'FRAME': []}
+        coeffs = {}
+        coeffs['FRAME'] = []
         for i in range(6):
             coeffs['POSE' + str(i)] = []
         for i in range(62):
@@ -206,7 +208,7 @@ def face_reconstruction():
 
             frame = imutils.resize(frame, width=400)
             faceOrNot, image = runFaceDetect(frame, net)
-            cv2.imshow("Frame", frame)
+            # cv2.imshow("Frame", frame)
 
             if faceOrNot == -1:
                 print('no faces detected')
@@ -216,9 +218,6 @@ def face_reconstruction():
             idx += 1
             if idx % count is not 0:  # process every `count` frames
                 continue
-
-            # Write the frame
-            cv2.imwrite('video_' + str(idx) + '.jpg', frame)
 
             # Fix the grey image
             if len(image.shape) < 3:
@@ -235,30 +234,34 @@ def face_reconstruction():
             # Shape = Shape_Texture[0:99]
             # Shape = np.reshape(Shape, [-1])
             Expr = np.reshape(Expr, [-1])
-            np.save('Expr', Expr)
-            # SEP, _ = utils.projectBackBFM_withExpr(model, Shape_Texture, Expr)
-            SEP = utils.projectBackBFM_withEP_withoutShape(model, Expr, Pose)
-
+            # np.save('Expr', Expr)
+            # SEP, _ = utils.projectBackBFM_withEP(model, Shape_Texture, Expr, Pose)
+            SEP = utils.projectBackBFM_withExpr_withoutPose(model, Expr)
 
             # Save the pose & expression coefficients
             coeffs['FRAME'].append(idx)
             for i in range(6):
                 coeffs['POSE' + str(i)].append(Pose[i])
-            convert_expr_coeffs(coeffs, Expr)
+            E = np.reshape(Expr, (1, 29))
+            B = E.dot(C)
+            for i, b in enumerate(B[0]):
+                coeffs[str(i) + '_EXP'].append(b)
 
             # Write the mesh
-            mesh_name = mesh_folder + '2/' + str(idx)
+            mesh_name = mesh_folder + '/' + str(idx)
             utils.write_ply_textureless(mesh_name + '_Shape_Expr_Pose.ply', SEP, faces)
+            # utils.write_ply(mesh_name + '_Shape_Expr_Pose.ply', SEP, faces)
 
             # Visualize 3D reconstruction result
-            pcd = open3d.io.read_point_cloud(mesh_name + '_Shape_Expr_Pose.ply')
-            open3d.visualization.draw_geometries([pcd])
+            # pcd = open3d.io.read_point_cloud(mesh_name + '_Shape_Expr_Pose.ply')
+            # open3d.visualization.draw_geometries([pcd])
 
             print(time.time() - start)
 
         # do a bit of cleanup
         cv2.destroyAllWindows()
 
+        print(coeffs)
         # Write coeffs to csv file
         df = pd.DataFrame(coeffs)
         df.to_csv(coeff_csv, sep=',', encoding='utf-8', index=False)
@@ -267,20 +270,6 @@ def face_reconstruction():
 def main(_):
     with tf.device('/cpu:0'):
         face_reconstruction()
-
-    # os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-    # os.environ["CUDA_VISIBLE_DEVICES"]="2"
-    # if FLAGS.num_gpus == 0:
-    #         dev = '/cpu:0'
-    # elif FLAGS.num_gpus == 1:
-    #         dev = '/gpu:0'
-    # else:
-    #         raise ValueError('Only support 0 or 1 gpu.')
-
-    # #print dev
-    # with tf.device(dev):
-    #         extract_PSE_feats()
-
 
 if __name__ == '__main__':
     tf.compat.v1.app.run()

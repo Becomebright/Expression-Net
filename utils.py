@@ -84,6 +84,44 @@ def projectBackBFM_withExpr(model, features, expr_paras):
     return S, T
 
 
+def projectBackBFM_withExpr_withoutShape(model, expr_paras):
+    expr = model.expEV * 0
+    for it in range(0, 29):
+        expr[it] = model.expEV[it] * expr_paras[it]
+    E = np.matmul(model.expPC, expr)
+
+    S = model.shapeMU + model.expMU + E
+    numVert = int(S.shape[0] / 3)
+    S = np.reshape(S, (numVert, 3))
+    return S
+
+
+def projectBackBFM_withEP_withoutShape(model, expr_paras, pose_paras):
+    # Expression
+    expr = model.expEV * 0
+    for it in range(0, 29):
+        expr[it] = model.expEV[it] * expr_paras[it]
+    E = np.matmul(model.expPC, expr)
+
+    # Adding back average shape
+    S = model.shapeMU + model.expMU + E
+    numVert = int(S.shape[0] / 3)
+
+    # Pose
+    r = pose_paras[0:3]
+    r[1] = -r[1]
+    r[2] = -r[2]
+    t = pose_paras[3:6]
+    t[0] = -t[0]
+
+    R, jacobian = cv2.Rodrigues(r, None)
+    S = np.reshape(S, (numVert, 3))
+    S_RT = np.matmul(R, np.transpose(S)) + np.reshape(t, [3, 1])
+    S_RT = np.transpose(S_RT)
+    S = np.reshape(S_RT, (numVert, 3))
+    return S
+
+
 # model = BFM, features = Shape_Texture
 def projectBackBFM_withEP(model, features, expr_paras, pose_paras):
     alpha = model.shapeEV * 0
